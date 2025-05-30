@@ -1,7 +1,7 @@
 Flask==3.1.1
 flask-cors==6.0.0
 transformers==4.51.3
-torch==2.7.0+cpu
+torch==2.7.0
 tokenizers==0.21.1
 numpy==2.2.5
 requests==2.32.3
