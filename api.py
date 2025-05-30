@@ -19,13 +19,29 @@ def query_huggingface_api(text):
     headers = {"Authorization": f"Bearer {os.environ.get('HUGGINGFACE_TOKEN')}"}
     data = {"inputs": text}
     
-    response = requests.post(HUGGINGFACE_API_URL, headers=headers, json=data)
-    return response.json()
+    try:
+        response = requests.post(HUGGINGFACE_API_URL, headers=headers, json=data, timeout=30)
+        print(f"HF API Response Status: {response.status_code}")
+        print(f"HF API Response Text: {response.text}")
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {"error": f"API returned status {response.status_code}: {response.text}"}
+    except Exception as e:
+        print(f"Error calling HF API: {e}")
+        return {"error": f"Request failed: {str(e)}"}
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    return jsonify({"status": "healthy", "model": MODEL_ID})
+    token_status = "Set" if os.environ.get('HUGGINGFACE_TOKEN') else "Missing"
+    return jsonify({
+        "status": "healthy", 
+        "model": MODEL_ID,
+        "api_url": HUGGINGFACE_API_URL,
+        "token_status": token_status
+    })
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_sentiment():
@@ -39,35 +55,38 @@ def analyze_sentiment():
         if not text:
             return jsonify({"error": "Empty text provided"}), 400
         
+        print(f"Analyzing text: {text}")
+        
         # Query Hugging Face Inference API
         result = query_huggingface_api(text)
         
         # Handle API errors
         if 'error' in result:
+            print(f"HF API Error: {result['error']}")
             return jsonify({"error": f"Model API error: {result['error']}"}), 500
         
-        # Process results
-        predictions = result[0] if isinstance(result, list) and len(result) > 0 else result
+        print(f"HF API Result: {result}")
         
-        # Format response
+        # Format response - the HF API returns classification results
         response = {
             "text": text,
-            "predictions": predictions,
+            "predictions": result,
             "model": MODEL_ID
         }
         
         return jsonify(response)
     
     except Exception as e:
+        print(f"Server error: {str(e)}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     token = os.environ.get('HUGGINGFACE_TOKEN')
     if not token:
-        print("⚠️  Warning: HUGGINGFACE_TOKEN not set!")
+        print("Warning: HUGGINGFACE_TOKEN not set!")
     else:
-        print("✅ Hugging Face token configured")
+        print("Hugging Face token configured")
     
-    print(f"🤖 Using model: {MODEL_ID}")
-    print(f"🌐 API URL: {HUGGINGFACE_API_URL}")
+    print(f"Using model: {MODEL_ID}")
+    print(f"API URL: {HUGGINGFACE_API_URL}")
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
