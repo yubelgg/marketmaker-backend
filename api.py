@@ -1,92 +1,161 @@
 import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import requests
 from dotenv import load_dotenv
+from gradio_client import Client
 
-# Load environment variables from .env file
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS to allow requests from your frontend
+CORS(app)
 
-# Configure Hugging Face model ID and API
 MODEL_ID = "yubelgg/marketmaker"
-HUGGINGFACE_API_URL = f"https://api-inference.huggingface.co/models/{MODEL_ID}"
+SPACE_URL = "https://huggingface.co/spaces/yubelgg/marketmaker-sentiment"
 
-def query_huggingface_api(text):
-    """Query Hugging Face Inference API"""
-    headers = {"Authorization": f"Bearer {os.environ.get('HUGGINGFACE_TOKEN')}"}
-    data = {"inputs": text}
-    
+
+def call_space_api(text):
+    """Call the Hugging Face Space API using the official gradio_client"""
     try:
-        response = requests.post(HUGGINGFACE_API_URL, headers=headers, json=data, timeout=30)
-        print(f"HF API Response Status: {response.status_code}")
-        print(f"HF API Response Text: {response.text}")
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return {"error": f"API returned status {response.status_code}: {response.text}"}
-    except Exception as e:
-        print(f"Error calling HF API: {e}")
-        return {"error": f"Request failed: {str(e)}"}
+        client = Client("yubelgg/marketmaker-sentiment")
+        result = client.predict(text, api_name="/analyze_text")
 
-@app.route('/api/health', methods=['GET'])
+        print(f"Raw result: {result}")
+
+        return parse_space_prediction(result, text)
+
+    except Exception as e:
+        print(f"gradio client error: {e}")
+        return {"error": f"Space API error: {e}"}
+
+
+def parse_space_prediction(prediction_text, original_text):
+    """Parse the actual prediction from the Space"""
+    try:
+        print(f"Parsing prediction: {prediction_text}")
+
+        if isinstance(prediction_text, str) and "**Predictions:**" in prediction_text:
+            lines = prediction_text.split("\n")
+            predictions = []
+
+            for line in lines:
+                line = line.strip()
+                # Look for prediction lines with percentages (lowercase format)
+                for label_lower in ["positive", "negative", "neutral"]:
+                    if f"**{label_lower}**:" in line:
+                        # Extract percentage
+                        score_str = line.split(f"**{label_lower}**:")[1].strip()
+                        if "%" in score_str:
+                            percentage = score_str.replace("%", "").strip()
+                            try:
+                                score = float(percentage) / 100.0
+                                label_upper = label_lower.upper()
+                                predictions.append(
+                                    {"label": label_upper, "score": score}
+                                )
+                                print(f"Parsed {label_upper}: {score}")
+                            except ValueError:
+                                continue
+
+            if predictions:
+                return {
+                    "text": original_text,
+                    "predictions": predictions,
+                    "model": MODEL_ID,
+                    "source": "huggingface_space",
+                }
+
+        return {"error": f"Could not parse prediction format: {prediction_text}"}
+
+    except Exception as e:
+        return {"error": f"Parse error: {e}"}
+
+
+@app.route("/api/health", methods=["GET"])
 def health_check():
     """Health check endpoint"""
-    token_status = "Set" if os.environ.get('HUGGINGFACE_TOKEN') else "Missing"
-    return jsonify({
-        "status": "healthy", 
-        "model": MODEL_ID,
-        "api_url": HUGGINGFACE_API_URL,
-        "token_status": token_status
-    })
+    return jsonify({"status": "healthy", "model": MODEL_ID, "space_url": SPACE_URL})
 
-@app.route('/api/analyze', methods=['POST'])
+
+@app.route("/api/analyze", methods=["POST"])
 def analyze_sentiment():
-    """Analyze sentiment of the provided text"""
+    """Analyze sentiment using Hugging Face Space"""
     try:
         data = request.get_json()
-        if not data or 'text' not in data:
+        if not data or "text" not in data:
             return jsonify({"error": "No text provided"}), 400
-        
-        text = data['text'].strip()
+
+        text = data["text"].strip()
         if not text:
             return jsonify({"error": "Empty text provided"}), 400
-        
-        print(f"Analyzing text: {text}")
-        
-        # Query Hugging Face Inference API
-        result = query_huggingface_api(text)
-        
-        # Handle API errors
-        if 'error' in result:
-            print(f"HF API Error: {result['error']}")
-            return jsonify({"error": f"Model API error: {result['error']}"}), 500
-        
-        print(f"HF API Result: {result}")
-        
-        # Format response - the HF API returns classification results
-        response = {
-            "text": text,
-            "predictions": result,
-            "model": MODEL_ID
-        }
-        
-        return jsonify(response)
-    
+
+        print(f"\nAnalyzing text: '{text}'")
+
+        # Call the Space API using gradio_client
+        result = call_space_api(text)
+
+        print(f"Final result: {result}\n")
+
+        if "error" in result:
+            return jsonify(result), 500
+
+        return jsonify(result)
+
     except Exception as e:
         print(f"Server error: {str(e)}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
-if __name__ == '__main__':
-    token = os.environ.get('HUGGINGFACE_TOKEN')
-    if not token:
-        print("Warning: HUGGINGFACE_TOKEN not set!")
-    else:
-        print("Hugging Face token configured")
-    
-    print(f"Using model: {MODEL_ID}")
-    print(f"API URL: {HUGGINGFACE_API_URL}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
+@app.route("/api/space-info", methods=["GET"])
+def space_info():
+    """Get information about the deployed Space"""
+    return jsonify(
+        {
+            "space_url": SPACE_URL,
+            "model": MODEL_ID,
+            "status": "live",
+            "description": "Your MarketMaker text classifier is now deployed on Hugging Face Spaces",
+            "features": [
+                "Text classification for market sentiment",
+                "Real-time predictions",
+                "User-friendly Gradio interface",
+                "Free hosting with no limitations",
+            ],
+            "how_to_use": [
+                f"1. Visit {SPACE_URL}",
+                "2. Enter your text in the input box",
+                "3. Click 'Analyze Text' or let it auto-analyze",
+                "4. View your classification results with confidence scores",
+            ],
+        }
+    )
+
+
+@app.route("/", methods=["GET"])
+def home():
+    """Home endpoint with Space information"""
+    return jsonify(
+        {
+            "message": "MarketMaker API - Now powered by Hugging Face Spaces!",
+            "space_url": SPACE_URL,
+            "endpoints": {
+                "/api/health": "Health check",
+                "/api/analyze": "Analyze sentiment using gradio_client",
+                "/api/space-info": "Space information",
+            },
+            "migration_complete": True,
+            "benefits": [
+                "No more Inference API limitations",
+                "No Heroku size restrictions",
+                "Free unlimited hosting",
+                "Professional model showcase",
+            ],
+        }
+    )
+
+
+if __name__ == "__main__":
+    print(f"MarketMaker API")
+    print(f"Model: {MODEL_ID}")
+    print(f"Space URL: {SPACE_URL}")
+    print("Using official gradio_client library")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
