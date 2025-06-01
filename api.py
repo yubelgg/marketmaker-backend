@@ -39,10 +39,8 @@ def parse_space_prediction(prediction_text, original_text):
 
             for line in lines:
                 line = line.strip()
-                # Look for prediction lines with percentages (lowercase format)
                 for label_lower in ["positive", "negative", "neutral"]:
                     if f"**{label_lower}**:" in line:
-                        # Extract percentage
                         score_str = line.split(f"**{label_lower}**:")[1].strip()
                         if "%" in score_str:
                             percentage = score_str.replace("%", "").strip()
@@ -88,12 +86,7 @@ def analyze_sentiment():
         if not text:
             return jsonify({"error": "Empty text provided"}), 400
 
-        print(f"\nAnalyzing text: '{text}'")
-
-        # Call the Space API using gradio_client
         result = call_space_api(text)
-
-        print(f"Final result: {result}\n")
 
         if "error" in result:
             return jsonify(result), 500
@@ -113,18 +106,16 @@ def space_info():
             "space_url": SPACE_URL,
             "model": MODEL_ID,
             "status": "live",
-            "description": "Your MarketMaker text classifier is now deployed on Hugging Face Spaces",
+            "description": "Your MarketMaker text classifier is deployed on Hugging Face Spaces",
             "features": [
                 "Text classification for market sentiment",
                 "Real-time predictions",
-                "User-friendly Gradio interface",
-                "Free hosting with no limitations",
             ],
             "how_to_use": [
                 f"1. Visit {SPACE_URL}",
                 "2. Enter your text in the input box",
-                "3. Click 'Analyze Text' or let it auto-analyze",
-                "4. View your classification results with confidence scores",
+                "3. Click 'Analyze Text'",
+                "4. View your classification results",
             ],
         }
     )
@@ -135,20 +126,13 @@ def home():
     """Home endpoint with Space information"""
     return jsonify(
         {
-            "message": "MarketMaker API - Now powered by Hugging Face Spaces!",
+            "message": "MarketMaker API - powered by Hugging Face Spaces!",
             "space_url": SPACE_URL,
             "endpoints": {
                 "/api/health": "Health check",
                 "/api/analyze": "Analyze sentiment using gradio_client",
                 "/api/space-info": "Space information",
             },
-            "migration_complete": True,
-            "benefits": [
-                "No more Inference API limitations",
-                "No Heroku size restrictions",
-                "Free unlimited hosting",
-                "Professional model showcase",
-            ],
         }
     )
 
@@ -157,5 +141,4 @@ if __name__ == "__main__":
     print(f"MarketMaker API")
     print(f"Model: {MODEL_ID}")
     print(f"Space URL: {SPACE_URL}")
-    print("Using official gradio_client library")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
