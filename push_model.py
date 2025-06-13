@@ -19,11 +19,11 @@ try:
     model.push_to_hub(repository_id)
     tokenizer.push_to_hub(repository_id)
     
-    print(f"✅ Model and tokenizer successfully pushed to {repository_id}")
-    print(f"🔗 You can view your model at: https://huggingface.co/{repository_id}")
+    print(f"Model and tokenizer successfully pushed to {repository_id}")
+    print(f"You can view your model at: https://huggingface.co/{repository_id}")
     
 except Exception as e:
-    print(f"❌ Error during upload: {e}")
+    print(f"Error during upload: {e}")
     print("Please make sure:")
     print("1. You're logged in to Hugging Face CLI")
     print("2. The repository exists or you have permission to create it")
